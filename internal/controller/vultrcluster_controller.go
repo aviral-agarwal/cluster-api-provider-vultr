@@ -196,14 +196,14 @@ func (r *VultrClusterReconciler) reconcileNormal(ctx context.Context, clusterSco
 	apiServerLoadbalancerRef.ResourceSubscriptionStatus = infrav1.SubscriptionStatus(loadBalancer.Status)
 	apiServerLoadbalancer.ID = loadBalancer.ID
 
-	if apiServerLoadbalancerRef.ResourcePowerStatus != infrav1.PowerStatusRunning && loadBalancer.IPV4 == "" {
-		clusterScope.Info("Waiting on API server Global IP Address")
+	if apiServerLoadbalancerRef.ResourceSubscriptionStatus != infrav1.SubscriptionStatusActive || loadBalancer.IPV4 == "" {
+		clusterScope.Info("Waiting on API server load balancer to become active", "status", loadBalancer.Status, "ipv4", loadBalancer.IPV4)
 		vultrCluster.Status.Initialization.Provisioned = ptr.To(false)
 		conditions.Set(vultrCluster, metav1.Condition{
 			Type:               infrav1.LoadBalancerReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             infrav1.WaitingForIPReason,
-			Message:            "Waiting for Global IP Address",
+			Message:            fmt.Sprintf("Waiting for load balancer to become active, current status: %s, ip: %s", loadBalancer.Status, loadBalancer.IPV4),
 			LastTransitionTime: metav1.Now(),
 		})
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -212,10 +212,10 @@ func (r *VultrClusterReconciler) reconcileNormal(ctx context.Context, clusterSco
 		Type:               infrav1.LoadBalancerReadyCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             "LoadBalancerReady",
-		Message:            fmt.Sprintf("LoadBalancer got an IP Address - %s", loadBalancer.IPV4),
+		Message:            fmt.Sprintf("LoadBalancer is active with IP Address - %s", loadBalancer.IPV4),
 		LastTransitionTime: metav1.Now(),
 	})
-	r.Recorder.Eventf(vultrCluster, nil, corev1.EventTypeNormal, "LoadBalancerReady", "Ready", "LoadBalancer got an IP Address - %s", loadBalancer.IPV4)
+	r.Recorder.Eventf(vultrCluster, nil, corev1.EventTypeNormal, "LoadBalancerReady", "Ready", "LoadBalancer is active with IP Address - %s", loadBalancer.IPV4)
 
 	controlPlaneEndpoint := loadBalancer.IPV4
 	clusterScope.SetControlPlaneEndpoint(clusterv1.APIEndpoint{
