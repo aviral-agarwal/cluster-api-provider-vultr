@@ -62,6 +62,11 @@ spec:
           spec:
             description: VultrMachineSpec defines the desired state of VultrMachine
             properties:
+              enable_ipv6:
+                default: true
+                description: EnableIPv6 controls whether the instance is created with
+                  IPv6 enabled.
+                type: boolean
               firewall_group_id:
                 description: The Vultr firewall group ID to attach to the instance
                 type: string

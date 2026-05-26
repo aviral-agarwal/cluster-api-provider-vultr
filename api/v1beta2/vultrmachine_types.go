@@ -51,7 +51,12 @@ type VultrMachineSpec struct {
 	// +optional
 	VPCID string `json:"vpc_id,omitempty"`
 
-	//VPCOnly indicates that the VPS will not receive a public IP or public NIC when true.
+	// EnableIPv6 controls whether the instance is created with IPv6 enabled.
+	// +optional
+	// +kubebuilder:default=true
+	EnableIPv6 *bool `json:"enable_ipv6,omitempty"`
+
+	// VPCOnly indicates that the VPS will not receive a public IP or public NIC when true.
 	VPCOnly bool `json:"vpc_only,omitempty"`
 
 	//The Vultr firewall group ID to attach to the instance
