@@ -265,6 +265,17 @@ Cluster/capvultr-quickstart                                                     
     └─2 Machines...                                                               True                     16m    See capvultr-quickstart-md-0-b54j9-cw5jh, capvultr-quickstart-md-0-b54j9-nvv2c 
 ```
 
+### Ignition Support
+
+CAPVultr supports ignition bootstrap data in addition to cloud-config based bootstrap payloads.
+
+For ignition-based cluster creation, use:
+
+```bash
+clusterctl generate cluster capvultr-quickstart --from templates/cluster-template-ignition.yaml > cluster.yaml
+```
+
+The existing `templates/cluster-template.yaml` remains the kubeadm/cloud-config oriented quickstart template.
 
 ## Deleting a workload cluster
 

@@ -57,6 +57,12 @@ type MachineScope struct {
 	VultrCluster *infrav1.VultrCluster
 }
 
+// BootstrapData captures the rendered bootstrap payload and its format.
+type BootstrapData struct {
+	Value  string
+	Format string
+}
+
 // NewMachineScope creates a new Scope from the supplied parameters.
 // This is meant to be called for each reconcile iteration
 func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
@@ -155,10 +161,10 @@ func (m *MachineScope) Namespace() string {
 	return m.VultrMachine.Namespace
 }
 
-func (m *MachineScope) GetBootstrapData() (string, error) {
+func (m *MachineScope) GetBootstrapData() (*BootstrapData, error) {
 	if m.Machine.Spec.Bootstrap.DataSecretName == nil {
 		m.Info("Bootstrap data secret reference is nil")
-		return "", errors.New("error retrieving bootstrap data: linked Machine's bootstrap.dataSecretName is nil")
+		return nil, errors.New("error retrieving bootstrap data: linked Machine's bootstrap.dataSecretName is nil")
 	}
 
 	secretName := *m.Machine.Spec.Bootstrap.DataSecretName
@@ -168,18 +174,24 @@ func (m *MachineScope) GetBootstrapData() (string, error) {
 	secret := &corev1.Secret{}
 	if err := m.client.Get(context.TODO(), key, secret); err != nil {
 		m.Error(err, "Failed to retrieve bootstrap data secret", "namespace", key.Namespace, "name", key.Name)
-		return "", errors.Wrapf(err, "failed to retrieve bootstrap data secret for VultrMachine %s/%s", m.Namespace(), m.Name())
+		return nil, errors.Wrapf(err, "failed to retrieve bootstrap data secret for VultrMachine %s/%s", m.Namespace(), m.Name())
 	}
 
 	value, ok := secret.Data["value"]
 	if !ok {
 		m.Info("Bootstrap data secret missing 'value' key")
-		return "", errors.New("error retrieving bootstrap data: secret value key is missing")
+		return nil, errors.New("error retrieving bootstrap data: secret value key is missing")
+	}
+
+	format := string(secret.Data["format"])
+	if format == "" {
+		// CABPK defaults to cloud-config when spec.format is not set.
+		format = "cloud-config"
 	}
 
 	// Log the retrieved bootstrap data (truncated to avoid logging sensitive information)
-	m.Info("Successfully retrieved bootstrap data", "value", string(value)[:min(50, len(value))])
-	return string(value), nil
+	m.Info("Successfully retrieved bootstrap data", "format", format, "value", string(value)[:min(50, len(value))])
+	return &BootstrapData{Value: string(value), Format: format}, nil
 }
 
 // IsControlPlane returns true if the machine is a control plane.
