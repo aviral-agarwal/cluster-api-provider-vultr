@@ -29,14 +29,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	capi "sigs.k8s.io/cluster-api/api/v1beta1"
+	capi "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	infrav1 "github.com/vultr/cluster-api-provider-vultr/api/v1beta1"
+	infrav1 "github.com/vultr/cluster-api-provider-vultr/api/v1beta2"
 	controllers "github.com/vultr/cluster-api-provider-vultr/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
@@ -118,7 +118,7 @@ func main() {
 	if err = (&controllers.VultrClusterReconciler{
 		Client:           mgr.GetClient(),
 		ReconcileTimeout: reconcileTimeout,
-		Recorder:         mgr.GetEventRecorderFor("vultrcluster-controller"),
+		Recorder:         mgr.GetEventRecorder("vultrcluster-controller"),
 	}).SetupWithManager(ctx, mgr, controller.Options{}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VultrCluster")
 		os.Exit(1)
@@ -126,7 +126,7 @@ func main() {
 	if err = (&controllers.VultrMachineReconciler{
 		Client:           mgr.GetClient(),
 		ReconcileTimeout: reconcileTimeout,
-		Recorder:         mgr.GetEventRecorderFor("vultrmachine-controller"),
+		Recorder:         mgr.GetEventRecorder("vultrmachine-controller"),
 	}).SetupWithManager(ctx, mgr, controller.Options{}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VultrMachine")
 		os.Exit(1)
