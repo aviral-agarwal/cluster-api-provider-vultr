@@ -84,6 +84,10 @@ func (s *Service) CreateInstance(scope *scope.MachineScope) (*govultr.Instance, 
 	}
 	clusterName := s.scope.Name()
 	instanceName := scope.Name()
+	enableIPv6 := true
+	if scope.VultrMachine.Spec.EnableIPv6 != nil {
+		enableIPv6 = *scope.VultrMachine.Spec.EnableIPv6
+	}
 
 	s.scope.V(2).Info("Preparing instance creation request payload")
 	instanceReq := &govultr.InstanceCreateReq{
@@ -94,7 +98,7 @@ func (s *Service) CreateInstance(scope *scope.MachineScope) (*govultr.Instance, 
 		SSHKeys:    sshKeyIDs,
 		SnapshotID: scope.VultrMachine.Spec.Snapshot,
 		UserData:   encodedBootstrapData,
-		EnableIPv6: util.Pointer(true),
+		EnableIPv6: util.Pointer(enableIPv6),
 	}
 
 	if scope.VultrMachine.Spec.VPCID != "" {
