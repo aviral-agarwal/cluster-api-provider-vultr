@@ -57,6 +57,7 @@ type VultrMachineSpec struct {
 	EnableIPv6 *bool `json:"enable_ipv6,omitempty"`
 
 	// VPCOnly indicates that the VPS will not receive a public IP or public NIC when true.
+	// +optional
 	VPCOnly bool `json:"vpc_only,omitempty"`
 
 	//The Vultr firewall group ID to attach to the instance
