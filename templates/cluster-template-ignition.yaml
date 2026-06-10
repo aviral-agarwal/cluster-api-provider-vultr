@@ -1,0 +1,261 @@
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 172.25.0.0/16
+    services:
+      cidrBlocks:
+        - 172.26.0.0/16
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: VultrCluster
+    name: "${CLUSTER_NAME}"
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: "${CLUSTER_NAME}-control-plane"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: VultrCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  region: "${REGION}"
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: "${KUBERNETES_VERSION}"
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: VultrMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
+  kubeadmConfigSpec:
+    format: ignition
+    ignition:
+      containerLinuxConfig:
+        additionalConfig: |
+          systemd:
+            units:
+            - name: vultr-instance-id.service
+              enabled: true
+              contents: |
+                [Unit]
+                Description=Fetch Vultr instance UUID for kubeadm
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                Type=oneshot
+                ExecStart=/opt/bin/vultr-instance-id.sh
+
+                [Install]
+                WantedBy=multi-user.target
+            - name: kubeadm.service
+              enabled: true
+              dropins:
+              - name: 10-flatcar.conf
+                contents: |
+                  [Unit]
+                  Requires=vultr-instance-id.service
+                  After=vultr-instance-id.service
+                  After=containerd.service
+
+                  [Service]
+                  EnvironmentFile=/run/metadata/vultr-instance-id.env
+          storage:
+            files:
+            - path: /opt/bin/vultr-instance-id.sh
+              mode: 0755
+              contents:
+                inline: |
+                  #!/usr/bin/env bash
+                  set -euo pipefail
+
+                  METADATA_URL="http://169.254.169.254/v1.json"
+                  ENV_FILE="/run/metadata/vultr-instance-id.env"
+
+                  metadata_json="$(curl -fsS "${METADATA_URL}")"
+                  instance_id="$(printf '%s\n' "${metadata_json}" | sed -n 's/.*"instance-v2-id":"\([^"]*\)".*/\1/p')"
+
+                  if [ -z "${instance_id}" ]; then
+                    echo "failed to extract instance-v2-id from Vultr metadata" >&2
+                    exit 1
+                  fi
+
+                  mkdir -p /run/metadata
+                  printf 'VULTR_PROVIDER_ID=%s\n' "${instance_id}" > "${ENV_FILE}"
+                  chmod 0644 "${ENV_FILE}"
+    preKubeadmCommands:
+      - |
+        set -eu
+
+        cp /etc/kubeadm.yml /etc/kubeadm.yml.original
+        envsubst < /etc/kubeadm.yml > /etc/kubeadm.yml.tmp
+        mv /etc/kubeadm.yml.tmp /etc/kubeadm.yml
+    initConfiguration:
+      nodeRegistration:
+        criSocket: unix:///var/run/containerd/containerd.sock
+        kubeletExtraArgs:
+          - name: cgroup-driver
+            value: systemd
+          - name: eviction-hard
+            value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+          - name: cloud-provider
+            value: external
+          - name: provider-id
+            value: vultr://${VULTR_PROVIDER_ID}
+    joinConfiguration:
+      nodeRegistration:
+        criSocket: unix:///var/run/containerd/containerd.sock
+        kubeletExtraArgs:
+          - name: cgroup-driver
+            value: systemd
+          - name: eviction-hard
+            value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+          - name: cloud-provider
+            value: external
+          - name: provider-id
+            value: vultr://${VULTR_PROVIDER_ID}
+
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: VultrMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      region: "${REGION}"
+      planID: "${CONTROL_PLANE_PLAN_ID}"
+      vpc_id: "${VPC_ID}"
+      snapshot_id: "${MACHINE_IMAGE}"
+      sshKey:
+        - "${SSH_KEY_ID}"
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: "${CLUSTER_NAME}-md-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: VultrMachineTemplate
+        name: "${CLUSTER_NAME}-md-0"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: VultrMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      region: "${REGION}"
+      planID: "${WORKER_PLAN_ID}"
+      vpc_id: "${VPC_ID}"
+      snapshot_id: "${MACHINE_IMAGE}"
+      sshKey:
+        - "${SSH_KEY_ID}"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      format: ignition
+      ignition:
+        containerLinuxConfig:
+          additionalConfig: |
+            systemd:
+              units:
+              - name: vultr-instance-id.service
+                enabled: true
+                contents: |
+                  [Unit]
+                  Description=Fetch Vultr instance UUID for kubeadm
+                  Wants=network-online.target
+                  After=network-online.target
+
+                  [Service]
+                  Type=oneshot
+                  ExecStart=/opt/bin/vultr-instance-id.sh
+
+                  [Install]
+                  WantedBy=multi-user.target
+              - name: kubeadm.service
+                enabled: true
+                dropins:
+                - name: 10-flatcar.conf
+                  contents: |
+                    [Unit]
+                    Requires=vultr-instance-id.service
+                    After=vultr-instance-id.service
+                    After=containerd.service
+
+                    [Service]
+                    EnvironmentFile=/run/metadata/vultr-instance-id.env
+            storage:
+              files:
+              - path: /opt/bin/vultr-instance-id.sh
+                mode: 0755
+                contents:
+                  inline: |
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    METADATA_URL="http://169.254.169.254/v1.json"
+                    ENV_FILE="/run/metadata/vultr-instance-id.env"
+
+                    metadata_json="$(curl -fsS "${METADATA_URL}")"
+                    instance_id="$(printf '%s\n' "${metadata_json}" | sed -n 's/.*"instance-v2-id":"\([^"]*\)".*/\1/p')"
+
+                    if [ -z "${instance_id}" ]; then
+                      echo "failed to extract instance-v2-id from Vultr metadata" >&2
+                      exit 1
+                    fi
+
+                    mkdir -p /run/metadata
+                    printf 'VULTR_PROVIDER_ID=%s\n' "${instance_id}" > "${ENV_FILE}"
+                    chmod 0644 "${ENV_FILE}"
+      preKubeadmCommands:
+        - |
+          set -eu
+
+          cp /etc/kubeadm.yml /etc/kubeadm.yml.original
+          envsubst < /etc/kubeadm.yml > /etc/kubeadm.yml.tmp
+          mv /etc/kubeadm.yml.tmp /etc/kubeadm.yml
+      joinConfiguration:
+        nodeRegistration:
+          criSocket: unix:///var/run/containerd/containerd.sock
+          kubeletExtraArgs:
+            - name: cloud-provider
+              value: external
+            - name: cgroup-driver
+              value: systemd
+            - name: eviction-hard
+              value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+            - name: provider-id
+              value: vultr://${VULTR_PROVIDER_ID}

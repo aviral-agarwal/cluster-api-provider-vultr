@@ -61,18 +61,20 @@ func (s *Service) CreateInstance(scope *scope.MachineScope) (*govultr.Instance, 
 
 	s.scope.V(2).Info("Retrieving bootstrap data")
 	bootstrapData, err := scope.GetBootstrapData()
-
-	commands := []string{
-		"ufw disable",
-	}
-	updatedBootstrapData := appendToUserDataCloudConfig(bootstrapData, commands)
-	encodedBootstrapData := base64.StdEncoding.EncodeToString([]byte(updatedBootstrapData))
-
 	if err != nil {
 		log.Error(err, "Error getting bootstrap data for machine")
 		return nil, errors.Wrap(err, "failed to retrieve bootstrap data")
 	}
-	s.scope.V(2).Info("Successfully retrieved bootstrap data")
+	s.scope.V(2).Info("Successfully retrieved bootstrap data", "format", bootstrapData.Format)
+
+	renderedBootstrapData := bootstrapData.Value
+	if bootstrapData.Format == "cloud-config" {
+		commands := []string{
+			"ufw disable",
+		}
+		renderedBootstrapData = appendToUserDataCloudConfig(bootstrapData.Value, commands)
+	}
+	encodedBootstrapData := base64.StdEncoding.EncodeToString([]byte(renderedBootstrapData))
 
 	var sshKeyIDs []string //nolint:prealloc
 	for _, sshKeyID := range scope.VultrMachine.Spec.SSHKey {
